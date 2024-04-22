@@ -1,2 +1,8 @@
+# IDE
+.idea/
+
 # datavolume
 data/
+
+# generate configuration
+**/*.conf
