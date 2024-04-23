@@ -219,7 +219,7 @@ help_common() {
   config      Print config file
               e.g. $0 config >> myMongo.conf
 
-  custom      Help to create configuration for mongoScript
+  custom      Help to create configuration for this script
               e.g. $0 custom                        --> create config file only : custom_mongo.conf
               e.g. $0 custom myFileName.conf        --> create config file with custom file name
               e.g. $0 custom setup                  --> create config file and setup mongo : custom_mongo.conf
