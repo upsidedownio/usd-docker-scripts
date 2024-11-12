@@ -1,0 +1,73 @@
+services:
+  mongo:
+    image: mongo:8
+    container_name: usd-local-mongo
+    hostname: usd-local-mongo
+    command: >
+      bash -c '
+        KEYFILE=/keyfile/mongo-keyfile
+
+        # Ensure the keyfile directory exists and has correct permissions
+        mkdir -p /keyfile
+        chmod 700 /keyfile
+
+        # If keyfile does not exist, create it
+        if [ ! -f "/keyfile/mongo-keyfile" ]; then
+          echo "Creating keyfile..."
+          openssl rand -base64 756 > "/keyfile/mongo-keyfile"
+          chmod 400 "/keyfile/mongo-keyfile"
+        fi
+        echo "Keyfile prepared."
+
+        echo "Starting MongoDB..."
+        # Start MongoDB without authentication and without keyfile
+        mongod --bind_ip_all --port 27017 &
+        MONGOD_PID=$!
+
+        # Wait for MongoDB to start
+        until mongosh --port 27017 --eval "db.adminCommand({ping: 1})"; do
+          echo "Waiting for MongoDB to start..."
+          sleep 2
+        done
+        echo "MongoDB with MongoDB started."
+
+        # Create the admin user with root role
+        mongosh --port 27017 --eval "
+          db.getSiblingDB(\"admin\").createUser({
+            user: \"localMongoAdmin\",
+            pwd: \"localMongo\",
+            roles: [ \"root\" ]
+          });
+          db.getSiblingDB(\"admin\").getUsers();
+        "
+        echo "Admin user created."
+
+        # Stop MongoDB
+        kill $!
+        wait $!
+        echo "MongoDB stopped."
+
+        # Start MongoDB with replica set, authentication, and keyfile
+        echo "Starting MongoDB with replica set, authentication, and keyfile..."
+        mongod --replSet rs0 --bind_ip_all --auth --keyFile "/keyfile/mongo-keyfile" --port 27017 &
+        MONGOD_PID=$!
+
+        # Wait for MongoDB to start
+        until mongosh --port 27017 -u mongoLocalAdmin -p localMongo --authenticationDatabase admin --eval "db.adminCommand({ping: 1})"; do
+          echo "Waiting for MongoDB with replica set to start..."
+          sleep 2
+        done
+        echo "MongoDB with replica set started."
+
+        echo "MongoDB started with authentication and keyfile."
+        # Initiate the replica set
+        mongosh --port 27017 -u mongoLocalAdmin -p localMongo --authenticationDatabase admin --eval "rs.initiate()"
+
+        # Keep the container running
+        wait $!
+      '
+    ports:
+      - "10801:27017"
+    volumes:
+      - ./mongo-data:/data/db
+      - ./mongo-keyfile:/keyfile

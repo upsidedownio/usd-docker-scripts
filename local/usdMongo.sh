@@ -64,7 +64,7 @@ runMongoContainer() {
     -p $VALUE_PORT:$VALUE_PORT \
     -v $VALUE_VOLUME:/data/db \
     --restart=always \
-    mongo --replSet=usdrs --bind_ip_all --port $VALUE_PORT
+    mongo:8 --replSet=usdrs --bind_ip_all --port $VALUE_PORT
 }
 
 # ============================================================================
@@ -82,7 +82,7 @@ setup() {
   sleep 5
 
   # initiate Mongo Replica Set
-  mongoEval "use admin" "rs.initiate()"
+  mongoEval "rs.initiate()"
 
   # create root user admin
   mongoEval "use admin" "db.createUser( { user: '$VALUE_USER', pwd: '$VALUE_PASS', roles: ['root'] } )"
