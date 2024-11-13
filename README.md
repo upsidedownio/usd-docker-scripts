@@ -15,3 +15,15 @@
 ```bash
 ./local/usdMongo.sh create
 ```
+
+### Configuration
+
+#### Option1: update /etc/hosts/
+```
+127.0.0.1 usd-local-mongo
+```
+
+#### Option2: use DirectConnection option on url
+```
+mongodb://localhost:10801/dbName?directConnection=true
+```
