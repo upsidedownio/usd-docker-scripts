@@ -16,6 +16,8 @@ MONGO_CONTAINER_PORT_DEFAULT=10801                # -p
 MONGO_VOLUME_PATH_DEFAULT="./data/mongodb"        # -v
 MONGO_ROOT_USER_DEFAULT="admin"                   # -u
 MONGO_ROOT_PASS_DEFAULT="usdlocaladminpass"       # -s
+MONGO_IMAGE_DEFAULT="mongo:8"                     # -i
+MONGO_GLIBC_TUNABLES_DEFAULT="glibc.cpu.hwcaps=-SHSTK"
 
 # load default value if not set from environment or config file
 fallback() {
@@ -24,6 +26,8 @@ fallback() {
   MONGO_VOLUME_PATH=${MONGO_VOLUME_PATH:=$MONGO_VOLUME_PATH_DEFAULT}
   MONGO_ROOT_USER=${MONGO_ROOT_USER:=$MONGO_ROOT_USER_DEFAULT}
   MONGO_ROOT_PASS=${MONGO_ROOT_PASS:=$MONGO_ROOT_PASS_DEFAULT}
+  MONGO_IMAGE=${MONGO_IMAGE:=$MONGO_IMAGE_DEFAULT}
+  MONGO_GLIBC_TUNABLES=${MONGO_GLIBC_TUNABLES:=$MONGO_GLIBC_TUNABLES_DEFAULT}
 }
 
 # load options from command line, it cover fallback()'s functionality as well
@@ -33,6 +37,8 @@ buildParams() {
   VALUE_VOLUME=${volume:-${MONGO_VOLUME_PATH:=$MONGO_VOLUME_PATH_DEFAULT}}
   VALUE_USER=${user:-${MONGO_ROOT_USER:=$MONGO_ROOT_USER_DEFAULT}}
   VALUE_PASS=${pass:-${MONGO_ROOT_PASS:=$MONGO_ROOT_PASS_DEFAULT}}
+  VALUE_IMAGE=${image:-${MONGO_IMAGE:=$MONGO_IMAGE_DEFAULT}}
+  VALUE_GLIBC_TUNABLES=${MONGO_GLIBC_TUNABLES:=$MONGO_GLIBC_TUNABLES_DEFAULT}
 }
 
 printParams() {
@@ -42,6 +48,8 @@ printParams() {
   echo container volume path: $VALUE_VOLUME
   echo MongoDB Root User: $VALUE_USER
   echo MongoDB Root Pass: $VALUE_PASS
+  echo MongoDB Image: $VALUE_IMAGE
+  echo MongoDB GLIBC Tunables: $VALUE_GLIBC_TUNABLES
   echo ======================================
 }
 
@@ -63,8 +71,11 @@ runMongoContainer() {
     --hostname $VALUE_NAME \
     -p $VALUE_PORT:$VALUE_PORT \
     -v $VALUE_VOLUME:/data/db \
+    -e GLIBC_TUNABLES=$VALUE_GLIBC_TUNABLES \
+    --log-opt max-size=10m \
+    --log-opt max-file=3 \
     --restart=always \
-    mongo:8 --replSet=usdrs --bind_ip_all --port $VALUE_PORT
+    $VALUE_IMAGE --replSet=usdrs --bind_ip_all --port $VALUE_PORT
 }
 
 # ============================================================================
@@ -82,10 +93,10 @@ setup() {
   sleep 5
 
   # initiate Mongo Replica Set
-  mongoEval "rs.initiate()"
+  mongoEval "try { rs.status().ok } catch (e) { rs.initiate().ok }"
 
   # create root user admin
-  mongoEval "use admin" "db.createUser( { user: '$VALUE_USER', pwd: '$VALUE_PASS', roles: ['root'] } )"
+  mongoEval "db.getSiblingDB('admin').getUser('$VALUE_USER') || db.getSiblingDB('admin').createUser( { user: '$VALUE_USER', pwd: '$VALUE_PASS', roles: ['root'] } )"
 }
 
 # Stop and Remove MongoDB container
@@ -102,6 +113,8 @@ custom() {
   read -p "Enter MongoDB DataVolume Path [$MONGO_VOLUME_PATH]: " MONGO_VOLUME_PATH
   read -p "Enter RootUser Name [$MONGO_ROOT_USER]: " MONGO_ROOT_USER
   read -p "Enter RootUser Password [$MONGO_ROOT_PASS]: " MONGO_ROOT_PASS
+  read -p "Enter MongoDB Image [$MONGO_IMAGE]: " MONGO_IMAGE
+  read -p "Enter MongoDB GLIBC Tunables [$MONGO_GLIBC_TUNABLES]: " MONGO_GLIBC_TUNABLES
   buildParams
 }
 
@@ -177,9 +190,11 @@ printConfig(){
   echo "#!/bin/bash"
   echo "export MONGO_CONTAINER_NAME=$VALUE_NAME"
   echo "export MONGO_CONTAINER_PORT=$VALUE_PORT"
-  echo "export MONGO_ROOT_USER=$VALUE_VOLUME"
-  echo "export MONGO_ROOT_PASS=$VALUE_USER"
-  echo "export MONGO_VOLUME_PATH=$VALUE_PASS"
+  echo "export MONGO_VOLUME_PATH=$VALUE_VOLUME"
+  echo "export MONGO_ROOT_USER=$VALUE_USER"
+  echo "export MONGO_ROOT_PASS=$VALUE_PASS"
+  echo "export MONGO_IMAGE=$VALUE_IMAGE"
+  echo "export MONGO_GLIBC_TUNABLES=$VALUE_GLIBC_TUNABLES"
   echo ""
 }
 
@@ -190,6 +205,8 @@ loadConfigFile() {
   unset MONGO_VOLUME_PATH
   unset MONGO_ROOT_USER
   unset MONGO_ROOT_PASS
+  unset MONGO_IMAGE
+  unset MONGO_GLIBC_TUNABLES
 
   source $config
   fallback
@@ -243,6 +260,7 @@ help_setup(){
   -v    path of container's dataVolume
   -u    username for root privilege
   -s    password of root user
+  -i    MongoDB Docker image (default: mongo:8)
   "
   echo "Global Options:
   -c    path of configuration file. If config file specified,
@@ -305,7 +323,7 @@ if [ -z "$command" ]; then
 fi
 
 # 2. Parse Options
-optstring=":c:n:p:v:u:s:d:r:t:h"
+optstring=":c:n:p:v:u:s:i:d:r:t:h"
 while getopts ${optstring} opt; do
   OPTARG=${OPTARG#=}
   case ${opt} in
@@ -326,6 +344,9 @@ while getopts ${optstring} opt; do
       ;;
     s)
       pass=$OPTARG
+      ;;
+    i)
+      image=$OPTARG
       ;;
     d)
       dbName=$OPTARG
